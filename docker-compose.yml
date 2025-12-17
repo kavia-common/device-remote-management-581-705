@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  database:
+    build:
+      context: ./DatabaseContainer
+      dockerfile: Dockerfile
+    container_name: device-mgmt-database
+    ports:
+      - "5001:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-myapp}
+      - POSTGRES_USER=${POSTGRES_USER:-appuser}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dbuser123}
+      - POSTGRES_PORT=5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./DatabaseContainer/migrations:/docker-entrypoint-initdb.d/migrations
+      - ./DatabaseContainer/seeds:/docker-entrypoint-initdb.d/seeds
+    networks:
+      - device-mgmt-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appuser} -d ${POSTGRES_DB:-myapp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./BackendContainer
+      dockerfile: Dockerfile
+    container_name: device-mgmt-backend
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-appuser}:${POSTGRES_PASSWORD:-dbuser123}@database:5432/${POSTGRES_DB:-myapp}
+      - JWT_SECRET=${JWT_SECRET:-change-this-secret-in-production}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-this-refresh-secret-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-change-this-encryption-key-32-chars}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:5173}
+      - SNMP_ENABLED=${SNMP_ENABLED:-true}
+      - WEBPA_ENABLED=${WEBPA_ENABLED:-true}
+      - TR69_ENABLED=${TR69_ENABLED:-true}
+      - TR369_ENABLED=${TR369_ENABLED:-true}
+      - SNMP_SERVICE_URL=${SNMP_SERVICE_URL:-}
+      - WEBPA_SERVICE_URL=${WEBPA_SERVICE_URL:-}
+      - TR69_SERVICE_URL=${TR69_SERVICE_URL:-}
+      - TR369_SERVICE_URL=${TR369_SERVICE_URL:-}
+      - SNMP_API_KEY=${SNMP_API_KEY:-}
+      - WEBPA_API_KEY=${WEBPA_API_KEY:-}
+      - TR69_API_KEY=${TR69_API_KEY:-}
+      - TR369_API_KEY=${TR369_API_KEY:-}
+    volumes:
+      - ./BackendContainer/src:/app/src
+      - backend_node_modules:/app/node_modules
+    networks:
+      - device-mgmt-network
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./FrontendContainer
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:3000}
+        - VITE_WS_URL=${VITE_WS_URL:-ws://localhost:3000}
+    container_name: device-mgmt-frontend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000}
+      - VITE_WS_URL=${VITE_WS_URL:-ws://localhost:3000}
+    networks:
+      - device-mgmt-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+networks:
+  device-mgmt-network:
+    driver: bridge
+    name: device-mgmt-network
+
+volumes:
+  postgres_data:
+    name: device-mgmt-postgres-data
+  backend_node_modules:
+    name: device-mgmt-backend-node-modules

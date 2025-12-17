@@ -1,0 +1,235 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  NODE_VERSION: '18.x'
+  POSTGRES_VERSION: '15'
+
+jobs:
+  # Backend CI
+  backend-ci:
+    name: Backend - Lint, Test & Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: BackendContainer/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./BackendContainer
+        run: npm ci
+
+      - name: Run linter
+        working-directory: ./BackendContainer
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run tests
+        working-directory: ./BackendContainer
+        run: npm test
+        continue-on-error: true
+        env:
+          NODE_ENV: test
+
+      - name: Check build
+        working-directory: ./BackendContainer
+        run: node -c src/server.js
+
+  # Frontend CI
+  frontend-ci:
+    name: Frontend - Lint & Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: FrontendContainer/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./FrontendContainer
+        run: npm ci
+
+      - name: Run linter
+        working-directory: ./FrontendContainer
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build production bundle
+        working-directory: ./FrontendContainer
+        run: npm run build
+        env:
+          VITE_API_URL: http://localhost:3000
+          VITE_WS_URL: ws://localhost:3000
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: FrontendContainer/dist
+          retention-days: 7
+
+  # Database CI
+  database-ci:
+    name: Database - Validate Migrations
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: myapp_test
+          POSTGRES_USER: appuser
+          POSTGRES_PASSWORD: dbuser123
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate SQL syntax
+        run: |
+          for file in DatabaseContainer/migrations/*.sql; do
+            echo "Validating $file..."
+            psql -h localhost -U appuser -d myapp_test -f "$file" || exit 1
+          done
+        env:
+          PGPASSWORD: dbuser123
+
+      - name: Run seed data
+        run: |
+          for file in DatabaseContainer/seeds/*.sql; do
+            echo "Running $file..."
+            psql -h localhost -U appuser -d myapp_test -f "$file" || exit 1
+          done
+        env:
+          PGPASSWORD: dbuser123
+
+  # Docker Build
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci, database-ci]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+        continue-on-error: true
+
+      - name: Build Backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./BackendContainer
+          file: ./BackendContainer/Dockerfile
+          push: false
+          tags: device-mgmt-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Frontend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./FrontendContainer
+          file: ./FrontendContainer/Dockerfile
+          push: false
+          tags: device-mgmt-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VITE_API_URL=http://localhost:3000
+            VITE_WS_URL=ws://localhost:3000
+
+  # Integration Test
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci, database-ci]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          POSTGRES_DB=myapp
+          POSTGRES_USER=appuser
+          POSTGRES_PASSWORD=dbuser123
+          DATABASE_URL=postgresql://appuser:dbuser123@database:5432/myapp
+          NODE_ENV=test
+          BACKEND_PORT=3000
+          JWT_SECRET=test-secret
+          JWT_REFRESH_SECRET=test-refresh-secret
+          ENCRYPTION_KEY=test-encryption-key-32-chars!!
+          CORS_ORIGIN=http://localhost:5173
+          VITE_API_URL=http://localhost:3000
+          VITE_WS_URL=ws://localhost:3000
+          EOF
+
+      - name: Start services with Docker Compose
+        run: |
+          docker compose up -d
+          sleep 30
+
+      - name: Check service health
+        run: |
+          docker compose ps
+          curl -f http://localhost:3000/health || exit 1
+          curl -f http://localhost:5173/ || exit 1
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose logs database
+          docker compose logs backend
+          docker compose logs frontend
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
+
+  # Notification
+  notify:
+    name: Notify Build Status
+    runs-on: ubuntu-latest
+    needs: [backend-ci, frontend-ci, database-ci, docker-build, integration-test]
+    if: always()
+    
+    steps:
+      - name: Send notification
+        run: |
+          echo "Build completed with status: ${{ job.status }}"
+          # Add Slack/Discord/Email notification here if needed
