@@ -1,1 +1,14 @@
+# Environment files
 .env
+
+# Database backup files
+*.sql.backup
+*.db.backup
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*~

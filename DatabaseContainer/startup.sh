@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Minimal PostgreSQL startup script with full paths
+# Minimal PostgreSQL startup script with full paths and migration support
 DB_NAME="myapp"
 DB_USER="appuser"
 DB_PASSWORD="dbuser123"
@@ -21,6 +21,12 @@ if sudo -u postgres ${PG_BIN}/pg_isready -p ${DB_PORT} > /dev/null 2>&1; then
     echo "User: ${DB_USER}"
     echo "Port: ${DB_PORT}"
     echo ""
+    
+    # Run migrations even if database is already running
+    echo "Running database migrations..."
+    bash /home/kavia/workspace/code-generation/device-remote-management-581-705/DatabaseContainer/run_migrations.sh
+    
+    echo ""
     echo "To connect to the database, use:"
     echo "psql -h localhost -U ${DB_USER} -d ${DB_NAME} -p ${DB_PORT}"
     
@@ -30,7 +36,7 @@ if sudo -u postgres ${PG_BIN}/pg_isready -p ${DB_PORT} > /dev/null 2>&1; then
     fi
     
     echo ""
-    echo "Script stopped - server already running."
+    echo "Script completed - database is ready."
     exit 0
 fi
 
@@ -42,7 +48,12 @@ if pgrep -f "postgres.*-p ${DB_PORT}" > /dev/null 2>&1; then
     # Try to connect and verify the database exists
     if sudo -u postgres ${PG_BIN}/psql -p ${DB_PORT} -d ${DB_NAME} -c '\q' 2>/dev/null; then
         echo "Database ${DB_NAME} is accessible."
-        echo "Script stopped - server already running."
+        
+        # Run migrations
+        echo "Running database migrations..."
+        bash /home/kavia/workspace/code-generation/device-remote-management-581-705/DatabaseContainer/run_migrations.sh
+        
+        echo "Script completed - database is ready."
         exit 0
     fi
 fi
@@ -106,11 +117,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${DB_USER};
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO ${DB_USER};
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TYPES TO ${DB_USER};
 
--- If you want the user to be able to create objects without restrictions,
--- you can make them the owner of the public schema (optional but effective)
--- ALTER SCHEMA public OWNER TO ${DB_USER};
-
--- Alternative: Grant all privileges on schema public to the user
+-- Grant all privileges on schema public to the user
 GRANT ALL ON SCHEMA public TO ${DB_USER};
 
 -- Ensure the user can work with any existing objects
@@ -143,6 +150,16 @@ export POSTGRES_PORT="${DB_PORT}"
 EOF
 
 echo "PostgreSQL setup complete!"
+
+# Run migrations
+echo ""
+echo "Running database migrations..."
+bash /home/kavia/workspace/code-generation/device-remote-management-581-705/DatabaseContainer/run_migrations.sh
+
+echo ""
+echo "=========================================="
+echo "Database is ready!"
+echo "=========================================="
 echo "Database: ${DB_NAME}"
 echo "User: ${DB_USER}"
 echo "Port: ${DB_PORT}"
