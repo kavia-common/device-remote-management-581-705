@@ -1,0 +1,170 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: drm-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-myapp}
+      POSTGRES_USER: ${POSTGRES_USER:-appuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dbuser123}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./DatabaseContainer/migrate.sh:/docker-entrypoint-initdb.d/migrate.sh:ro
+    ports:
+      - "${POSTGRES_EXTERNAL_PORT:-5000}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appuser} -d ${POSTGRES_DB:-myapp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - drm-network
+
+  # Redis (Celery broker and result backend)
+  redis:
+    image: redis:7-alpine
+    container_name: drm-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_EXTERNAL_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - drm-network
+
+  # Database Migration Runner
+  db-migrate:
+    image: postgres:15-alpine
+    container_name: drm-db-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-myapp}
+      PGUSER: ${POSTGRES_USER:-appuser}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-dbuser123}
+    volumes:
+      - ./DatabaseContainer:/workspace
+    working_dir: /workspace
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        sleep 5 &&
+        echo 'psql postgresql://${POSTGRES_USER:-appuser}:${POSTGRES_PASSWORD:-dbuser123}@db:5432/${POSTGRES_DB:-myapp}' > db_connection.txt &&
+        chmod +x migrate.sh &&
+        echo 'Running migrations and seeds...' &&
+        ./migrate.sh up &&
+        echo 'Database initialization complete.'
+      "
+    networks:
+      - drm-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./BackendContainer
+      dockerfile: Dockerfile
+    container_name: drm-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-appuser}:${POSTGRES_PASSWORD:-dbuser123}@db:5432/${POSTGRES_DB:-myapp}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-3600}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      ENABLE_SSE: ${ENABLE_SSE:-true}
+      PORT: 8080
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./BackendContainer/src:/app/src
+      - backend_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/docs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - drm-network
+
+  # Celery Worker
+  worker:
+    build:
+      context: ./BackendContainer
+      dockerfile: Dockerfile
+    container_name: drm-worker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-appuser}:${POSTGRES_PASSWORD:-dbuser123}@db:5432/${POSTGRES_DB:-myapp}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-key-in-production}
+    command: celery -A src.celery_app.celery_app worker -l info -Q celery
+    volumes:
+      - ./BackendContainer/src:/app/src
+      - backend_uploads:/app/uploads
+    networks:
+      - drm-network
+
+  # Frontend
+  frontend:
+    build:
+      context: ./FrontendContainer
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+    container_name: drm-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - drm-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  drm-network:
+    driver: bridge

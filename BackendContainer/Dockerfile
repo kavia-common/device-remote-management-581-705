@@ -7,18 +7,26 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps for psycopg/asyncpg
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*
+# System deps for psycopg/asyncpg and curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install deps
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -e .
+
 # Optional: labels for worker command hint
 LABEL org.opencontainers.image.description="DRM Backend API + Celery tasks. Start worker with: celery -A src.celery_app.celery_app worker -l info -Q celery"
 
 # Copy source
 COPY src ./src
+
+# Create uploads directory
+RUN mkdir -p /app/uploads
 
 # Expose and run
 EXPOSE 8080
