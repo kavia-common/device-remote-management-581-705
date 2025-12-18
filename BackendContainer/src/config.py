@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from pydantic import AnyUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,6 +29,34 @@ class Settings(BaseSettings):
 
     # Realtime (SSE)
     ENABLE_SSE: bool = Field(default=True, description="Enable SSE job progress endpoint")
+    
+    # Protocol Client Configuration
+    
+    # SNMP defaults
+    SNMP_DEFAULT_TIMEOUT: float = Field(default=5.0, description="Default SNMP timeout in seconds")
+    SNMP_DEFAULT_RETRIES: int = Field(default=3, description="Default SNMP retry count")
+    SNMP_DEFAULT_PORT: int = Field(default=161, description="Default SNMP port")
+    SNMP_MAX_REPETITIONS: int = Field(default=25, description="Default BULKWALK max repetitions")
+    
+    # WebPA defaults
+    WEBPA_DEFAULT_TIMEOUT: float = Field(default=30.0, description="Default WebPA timeout in seconds")
+    WEBPA_DEFAULT_RETRIES: int = Field(default=3, description="Default WebPA retry count")
+    WEBPA_ENDPOINT: Optional[str] = Field(default=None, description="Default WebPA service endpoint (optional)")
+    
+    # TR-069 defaults
+    TR069_DEFAULT_TIMEOUT: float = Field(default=60.0, description="Default TR-069 timeout in seconds")
+    TR069_DEFAULT_RETRIES: int = Field(default=3, description="Default TR-069 retry count")
+    TR069_ACS_ENDPOINT: Optional[str] = Field(default=None, description="ECO ACS REST API endpoint (optional)")
+    TR069_ACS_USERNAME: Optional[str] = Field(default=None, description="ECO ACS API username (optional)")
+    TR069_ACS_PASSWORD: Optional[str] = Field(default=None, description="ECO ACS API password (optional)")
+    
+    # USP defaults
+    USP_DEFAULT_TIMEOUT: float = Field(default=30.0, description="Default USP timeout in seconds")
+    USP_DEFAULT_RETRIES: int = Field(default=3, description="Default USP retry count")
+    USP_CONTROLLER_ENDPOINT: Optional[str] = Field(default=None, description="USP controller REST API endpoint (optional)")
+    USP_TRANSPORT_MODE: str = Field(default="http", description="USP transport mode: http, mqtt, or websocket")
+    USP_MQTT_BROKER: Optional[str] = Field(default=None, description="MQTT broker URL for USP (optional)")
+    USP_MQTT_PORT: int = Field(default=1883, description="MQTT broker port for USP")
 
     # Computed
     @property
