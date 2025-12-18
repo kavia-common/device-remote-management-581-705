@@ -1,99 +1,178 @@
 import React, { useState } from 'react';
 import { JobList } from '../components/JobList';
 import { api } from '../services/api';
+import { Select } from '../components/ui/Select';
+import { Input } from '../components/ui/Input';
+import { Button } from '../components/ui/Button';
+import { useToastStore } from '../store/toast';
 
 // PUBLIC_INTERFACE
 export default function Jobs(): JSX.Element {
-  /** Jobs page with job enqueueing and monitoring. */
+  /** Jobs page with enhanced job enqueueing and monitoring. */
   const [protocol, setProtocol] = useState<'snmp' | 'webpa' | 'tr069' | 'usp'>('snmp');
   const [operation, setOperation] = useState<'get' | 'set' | 'bulkwalk'>('get');
   const [deviceId, setDeviceId] = useState('');
   const [params, setParams] = useState('{}');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ deviceId?: string; params?: string }>({});
   const [refreshKey, setRefreshKey] = useState(0);
+  
+  const addToast = useToastStore(s => s.addToast);
+
+  const validateForm = (): boolean => {
+    const newErrors: { deviceId?: string; params?: string } = {};
+    
+    if (!deviceId.trim()) {
+      newErrors.deviceId = 'Device ID is required';
+    }
+    
+    try {
+      JSON.parse(params);
+    } catch (e) {
+      newErrors.params = 'Invalid JSON format';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const enqueueJob = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
     setLoading(true);
-    setError(null);
+    setErrors({});
 
     try {
       const parsedParams = JSON.parse(params);
       const endpoint = `/jobs/enqueue/${protocol}/${operation}`;
       
       await api().post(endpoint, {
-        device_id: deviceId,
+        device_id: deviceId.trim(),
         params: parsedParams
       });
 
-      // Refresh job list
+      addToast('Job enqueued successfully', 'success');
       setRefreshKey(prev => prev + 1);
-      
-      // Reset form
       setParams('{}');
+      setDeviceId('');
     } catch (err: any) {
       console.error('Failed to enqueue job:', err);
-      setError(err?.response?.data?.detail || 'Failed to enqueue job');
+      const message = err?.response?.data?.detail || 'Failed to enqueue job';
+      addToast(message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="panel">
-      <h2>Jobs</h2>
-      
-      <div style={{ marginBottom: '24px', padding: '16px', background: '#f9f9f9', borderRadius: '4px' }}>
-        <h3 style={{ marginTop: 0 }}>Enqueue New Job</h3>
-        <form onSubmit={enqueueJob} className="column" style={{ gap: '12px' }}>
-          <div className="row" style={{ gap: '8px' }}>
-            <select value={protocol} onChange={e => setProtocol(e.target.value as any)}>
-              <option value="snmp">SNMP</option>
-              <option value="webpa">WebPA</option>
-              <option value="tr069">TR-069</option>
-              <option value="usp">USP</option>
-            </select>
-            
-            <select value={operation} onChange={e => setOperation(e.target.value as any)}>
-              <option value="get">GET</option>
-              <option value="set">SET</option>
-              {protocol === 'snmp' && <option value="bulkwalk">BULKWALK</option>}
-            </select>
+  const protocolOptions = [
+    { value: 'snmp', label: 'SNMP' },
+    { value: 'webpa', label: 'WebPA' },
+    { value: 'tr069', label: 'TR-069' },
+    { value: 'usp', label: 'USP' },
+  ];
 
-            <input 
-              placeholder="Device ID" 
+  const operationOptions = protocol === 'snmp'
+    ? [
+        { value: 'get', label: 'GET' },
+        { value: 'set', label: 'SET' },
+        { value: 'bulkwalk', label: 'BULKWALK' },
+      ]
+    : [
+        { value: 'get', label: 'GET' },
+        { value: 'set', label: 'SET' },
+      ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-text mb-2">Jobs</h1>
+        <p className="text-muted">Enqueue and monitor device operations</p>
+      </div>
+
+      <div className="panel">
+        <h2 className="text-xl font-semibold text-text mb-4">Enqueue New Job</h2>
+        <form onSubmit={enqueueJob} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Select
+              label="Protocol"
+              value={protocol}
+              onChange={(e) => {
+                setProtocol(e.target.value as any);
+                if (e.target.value !== 'snmp' && operation === 'bulkwalk') {
+                  setOperation('get');
+                }
+              }}
+              options={protocolOptions}
+              disabled={loading}
+            />
+            
+            <Select
+              label="Operation"
+              value={operation}
+              onChange={(e) => setOperation(e.target.value as any)}
+              options={operationOptions}
+              disabled={loading}
+            />
+
+            <Input
+              label="Device ID"
+              placeholder="Enter device ID"
               value={deviceId}
-              onChange={e => setDeviceId(e.target.value)}
+              onChange={(e) => {
+                setDeviceId(e.target.value);
+                setErrors(prev => ({ ...prev, deviceId: undefined }));
+              }}
+              error={errors.deviceId}
               required
               disabled={loading}
             />
           </div>
 
-          <textarea 
-            placeholder='Params JSON (e.g., {"oid": "1.3.6.1.2.1.1.1.0"})'
-            value={params}
-            onChange={e => setParams(e.target.value)}
-            rows={3}
-            style={{ fontFamily: 'monospace', fontSize: '0.9em' }}
-            disabled={loading}
-          />
+          <div>
+            <label htmlFor="params" className="label">
+              Parameters (JSON)
+            </label>
+            <textarea
+              id="params"
+              placeholder='{"oid": "1.3.6.1.2.1.1.1.0"}'
+              value={params}
+              onChange={(e) => {
+                setParams(e.target.value);
+                setErrors(prev => ({ ...prev, params: undefined }));
+              }}
+              rows={4}
+              className="input font-mono text-sm"
+              disabled={loading}
+            />
+            {errors.params && (
+              <p className="error-text">{errors.params}</p>
+            )}
+            <p className="text-sm text-muted mt-1">
+              Example for SNMP GET: {`{"oid": "1.3.6.1.2.1.1.1.0"}`}
+            </p>
+          </div>
 
-          {error && (
-            <div style={{ color: '#c33', fontSize: '0.9em' }}>
-              {error}
-            </div>
-          )}
-
-          <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <button className="primary" type="submit" disabled={loading}>
-              {loading ? 'Enqueueing...' : 'Enqueue Job'}
-            </button>
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={loading}
+              disabled={loading}
+            >
+              Enqueue Job
+            </Button>
           </div>
         </form>
       </div>
 
-      <JobList key={refreshKey} />
+      <div className="panel">
+        <h2 className="text-xl font-semibold text-text mb-4">Job Queue</h2>
+        <JobList key={refreshKey} />
+      </div>
     </div>
   );
 }

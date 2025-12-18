@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
+import { Input } from './ui/Input';
+import { Button } from './ui/Button';
+import { useToastStore } from '../store/toast';
 
 interface DeviceFormProps {
   onDeviceAdded?: () => void;
@@ -7,77 +10,97 @@ interface DeviceFormProps {
 
 // PUBLIC_INTERFACE
 export function DeviceForm({ onDeviceAdded }: DeviceFormProps = {}): JSX.Element {
-  /** Device creation form that posts to backend /devices endpoint. */
+  /** Device creation form with client-side validation. */
   const [name, setName] = useState('');
   const [ip, setIp] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [errors, setErrors] = useState<{ name?: string; ip?: string }>({});
+  
+  const addToast = useToastStore(s => s.addToast);
+
+  const validateForm = (): boolean => {
+    const newErrors: { name?: string; ip?: string } = {};
+    
+    if (!name.trim()) {
+      newErrors.name = 'Device name is required';
+    } else if (name.trim().length < 3) {
+      newErrors.name = 'Name must be at least 3 characters';
+    }
+    
+    if (!ip.trim()) {
+      newErrors.ip = 'IP address is required';
+    } else if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip.trim())) {
+      newErrors.ip = 'Please enter a valid IP address';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
     setLoading(true);
-    setError(null);
-    setSuccess(false);
+    setErrors({});
 
     try {
       await api().post('/devices', {
-        name,
-        ip,
+        name: name.trim(),
+        ip: ip.trim(),
         metadata: {}
       });
 
-      // Clear form on success
       setName('');
       setIp('');
-      setSuccess(true);
+      addToast('Device added successfully!', 'success');
 
-      // Notify parent to refresh list
       if (onDeviceAdded) {
         onDeviceAdded();
       }
-
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       console.error('Failed to add device:', err);
-      setError(err?.response?.data?.detail || 'Failed to add device');
+      const message = err?.response?.data?.detail || 'Failed to add device';
+      addToast(message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ width: '100%' }}>
-      <form onSubmit={submit} className="row" style={{ gap: 8 }}>
-        <input 
-          placeholder="Device name" 
-          value={name} 
-          onChange={e => setName(e.target.value)} 
-          required 
+    <form onSubmit={submit} className="flex gap-3 flex-wrap items-start w-full">
+      <div className="flex-1 min-w-[200px]">
+        <Input
+          placeholder="Device name"
+          value={name}
+          onChange={e => {
+            setName(e.target.value);
+            setErrors(prev => ({ ...prev, name: undefined }));
+          }}
+          error={errors.name}
           disabled={loading}
+          required
         />
-        <input 
-          placeholder="IP address" 
-          value={ip} 
-          onChange={e => setIp(e.target.value)} 
-          required 
+      </div>
+      <div className="flex-1 min-w-[200px]">
+        <Input
+          placeholder="IP address (e.g., 192.168.1.1)"
+          value={ip}
+          onChange={e => {
+            setIp(e.target.value);
+            setErrors(prev => ({ ...prev, ip: undefined }));
+          }}
+          error={errors.ip}
           disabled={loading}
+          required
         />
-        <button className="primary" type="submit" disabled={loading}>
-          {loading ? 'Adding...' : 'Add Device'}
-        </button>
-      </form>
-      {error && (
-        <div style={{ marginTop: '8px', color: '#c33', fontSize: '0.9em' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div style={{ marginTop: '8px', color: '#2a7' fontSize: '0.9em' }}>
-          Device added successfully!
-        </div>
-      )}
-    </div>
+      </div>
+      <Button type="submit" variant="primary" isLoading={loading} disabled={loading}>
+        Add Device
+      </Button>
+    </form>
   );
 }
