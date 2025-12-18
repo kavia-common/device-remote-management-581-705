@@ -9,6 +9,8 @@ Features:
   - SELECT app.set_current_tenant('<tenant-uuid>'::uuid)
   - SELECT app.set_current_user('<user-uuid>'::uuid)
 - Route stubs for auth, tenants, users, devices (CRUD placeholders)
+- MIB module upload, parsing (pysmi/pysnmp), and OID browsing with background Celery tasks
+- TR-181 parameter catalog with search, tree view, and validation
 - OpenAPI generation endpoint and export CLI
 
 ## Quick start
@@ -72,6 +74,7 @@ Tasks implemented:
 - job.webpa_get
 - job.tr069_get
 - job.usp_get
+- mib.parse_file
 
 Enqueue via API:
 - POST /jobs/enqueue/snmp/get
@@ -97,5 +100,31 @@ Set Frontend .env:
 - VITE_API_BASE_URL=http://localhost:8080
 
 CORS must include the frontend origin so browsers can call the API.
+
+## MIB and TR-181 Features
+
+### MIB Management
+
+Upload and parse SNMP MIB files:
+- POST /mib/upload (multipart form: file, optional name)
+  - Accepts .mib, .txt, or .tar.gz archives
+  - Returns task_id for background parsing via Celery
+- GET /mib/modules (list with search, pagination)
+- GET /mib/modules/{id} (module details)
+- GET /mib/modules/{id}/oids (list OIDs with prefix/name search)
+- DELETE /mib/modules/{id} (delete tenant-owned module)
+
+MIB parsing uses pysmi/pysnmp to extract OID definitions and store in mib_modules/mib_oids tables with RLS context.
+
+### TR-181 Parameter Catalog
+
+Manage TR-181 data model parameters:
+- POST /tr181/import (import seed data from source)
+- GET /tr181/parameters (search by path prefix, type, access, with pagination)
+- GET /tr181/tree (hierarchical tree by path segments, root_path query param)
+- GET /tr181/parameters/{id} (parameter details)
+- POST /tr181/validate (validate proposed parameter sets before applying)
+
+TR-181 data stored in tr181_parameters table with global (NULL tenant_id) and tenant-specific entries.
 
 This is a scaffold: endpoints expose schemas and expected shapes; integrate actual persistence and business logic in follow-up tasks.

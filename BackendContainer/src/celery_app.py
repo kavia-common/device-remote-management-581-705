@@ -20,7 +20,7 @@ def _make_celery() -> Celery:
         "drm_backend",
         broker=_settings.CELERY_BROKER_URL,
         backend=_settings.CELERY_RESULT_BACKEND,
-        include=["src.tasks.jobs"],
+        include=["src.tasks.jobs", "src.tasks.mib_tasks"],
     )
     # Basic, safe defaults
     app.conf.update(

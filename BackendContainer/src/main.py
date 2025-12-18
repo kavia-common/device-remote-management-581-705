@@ -13,6 +13,8 @@ from src.api.routes import tenants as tenants_routes
 from src.api.routes import users as users_routes
 from src.api.routes import devices as devices_routes
 from src.api.routes import jobs as jobs_routes
+from src.api.routes import mib as mib_routes
+from src.api.routes import tr181 as tr181_routes
 
 settings = get_settings()
 
@@ -22,6 +24,8 @@ openapi_tags = [
     {"name": "users", "description": "User management"},
     {"name": "devices", "description": "Device registry"},
     {"name": "jobs", "description": "Async job enqueue + SSE progress"},
+    {"name": "mib", "description": "MIB module upload, parsing, and OID browsing"},
+    {"name": "tr181", "description": "TR-181 parameter catalog and validation"},
 ]
 
 app = FastAPI(
@@ -80,6 +84,8 @@ app.include_router(tenants_routes.router)
 app.include_router(users_routes.router)
 app.include_router(devices_routes.router)
 app.include_router(jobs_routes.router)
+app.include_router(mib_routes.router)
+app.include_router(tr181_routes.router)
 
 
 def generate_openapi_schema() -> Dict:
