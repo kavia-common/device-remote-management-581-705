@@ -209,6 +209,61 @@ Enqueue via API:
 Subscribe to progress (SSE):
 - GET /jobs/events/{job_id}
 
+## Demo Scripts
+
+### Seed Demo Data
+
+First, seed the database with demo data (run from DatabaseContainer):
+```
+cd ../DatabaseContainer
+./seed_demo.sh
+```
+
+This creates:
+- Demo tenant (DemoTenant)
+- Demo admin user (demoadmin@example.com)
+- Sample device (localhost-snmp at 127.0.0.1)
+- SNMP v2c credential (demo-public-v2c, community=public, port=161)
+
+### Run Demo SNMP GET Job
+
+After seeding, run a demo SNMP GET job (run from BackendContainer):
+```
+python -m src.ops.run_demo_snmp
+```
+
+This script:
+1. Finds the demo device and credential
+2. Enqueues an SNMP GET job for OID 1.3.6.1.2.1.1.1.0 (sysDescr)
+3. Prints job ID and monitoring instructions
+
+Monitor the job:
+- REST API: `GET /jobs/{job_id}` - Returns job status and result
+- SSE: `GET /jobs/events/{job_id}` - Real-time progress updates
+- List all: `GET /jobs` - View all jobs
+
+Example:
+```bash
+# Enqueue job
+python -m src.ops.run_demo_snmp
+# Output: Job enqueued: 12345678-1234-1234-1234-123456789abc
+
+# Monitor via curl
+curl http://localhost:8080/jobs/12345678-1234-1234-1234-123456789abc
+
+# Monitor via SSE
+curl -N http://localhost:8080/jobs/events/12345678-1234-1234-1234-123456789abc
+```
+
+**Note**: Ensure the Celery worker is running before enqueuing jobs. If no SNMP agent is running on localhost:161, the job will fail but the end-to-end flow will still be demonstrated.
+
+### Alternative: Seed and Enqueue in One Step
+
+Use `seed_demo.py` to verify seed data and enqueue a job:
+```
+python -m src.ops.seed_demo
+```
+
 ## Protocol Clients
 
 ### SNMP Client (`src/protocols/snmp_client.py`)

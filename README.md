@@ -210,6 +210,43 @@ All services include health checks:
 
 ## Common Operations
 
+### Seed Demo Data
+
+To seed the database with demo tenant, user, and device:
+
+```bash
+# Run database seed script
+docker-compose exec db-migrate sh -c "cd /workspace && ./seed_demo.sh"
+```
+
+This creates:
+- Demo tenant (DemoTenant)
+- Demo admin user (demoadmin@example.com)
+- Sample device (localhost-snmp at 127.0.0.1)
+- SNMP v2c credential (demo-public-v2c, community=public, port=161)
+
+### Run Demo SNMP Job
+
+After seeding, trigger a demo SNMP GET job:
+
+```bash
+# Run demo job script
+docker-compose exec backend python -m src.ops.run_demo_snmp
+```
+
+This enqueues an SNMP GET job for OID 1.3.6.1.2.1.1.1.0 (sysDescr) and prints instructions for monitoring.
+
+Monitor the job:
+```bash
+# Get job status
+curl http://localhost:8080/jobs/{job_id}
+
+# Watch real-time progress via SSE
+curl -N http://localhost:8080/jobs/events/{job_id}
+```
+
+**Note**: The Celery worker must be running. If no SNMP agent is on localhost:161, the job will fail but demonstrates the complete workflow.
+
 ### Stop All Services
 
 ```bash

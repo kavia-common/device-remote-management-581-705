@@ -30,6 +30,15 @@ You can also run specific phases:
 - ./migrate.sh indexes
 - ./migrate.sh seeds
 
+4) (Optional) Seed demo data for testing:
+   ./seed_demo.sh
+
+This creates:
+- Demo tenant (DemoTenant)
+- Demo admin user (demoadmin@example.com)
+- Sample device (localhost-snmp at 127.0.0.1)
+- SNMP v2c credential (demo-public-v2c, community=public, port=161)
+
 ## Security and RLS
 
 Row Level Security is enabled on all tenant-scoped tables. Policies rely on a session variable set by the backend:
