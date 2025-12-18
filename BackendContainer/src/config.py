@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = Field(default="", description="Comma-separated list of allowed CORS origins")
 
+    # Celery / Redis
+    CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0", description="Celery broker URL (Redis)")
+    CELERY_RESULT_BACKEND: str = Field(default="redis://localhost:6379/1", description="Celery result backend (Redis)")
+
+    # Realtime (SSE)
+    ENABLE_SSE: bool = Field(default=True, description="Enable SSE job progress endpoint")
+
     # Computed
     @property
     def cors_origins_list(self) -> List[str]:

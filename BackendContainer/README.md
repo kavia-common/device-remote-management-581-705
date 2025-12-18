@@ -41,6 +41,9 @@ See .env.example. Important:
 - JWT_SECRET
 - JWT_EXPIRES_IN (seconds, default 3600)
 - CORS_ORIGINS (comma-separated; include FrontendContainer URL, e.g., http://localhost:5173)
+- CELERY_BROKER_URL (e.g., redis://redis:6379/0)
+- CELERY_RESULT_BACKEND (e.g., redis://redis:6379/1)
+- ENABLE_SSE=true|false
 
 ## Docker
 
@@ -49,6 +52,35 @@ Build and run:
 docker build -t drm-backend .
 docker run --env-file .env -p 8080:8080 drm-backend
 ```
+
+## Celery worker
+
+Requires Redis accessible via CELERY_BROKER_URL/CELERY_RESULT_BACKEND.
+
+Start API:
+```
+uvicorn src.main:app --host 0.0.0.0 --port 8080
+```
+
+Start worker (from project root of BackendContainer):
+```
+celery -A src.celery_app.celery_app worker -l info -Q celery
+```
+
+Tasks implemented:
+- job.snmp_get
+- job.webpa_get
+- job.tr069_get
+- job.usp_get
+
+Enqueue via API:
+- POST /jobs/enqueue/snmp/get
+- POST /jobs/enqueue/webpa/get
+- POST /jobs/enqueue/tr069/get
+- POST /jobs/enqueue/usp/get
+
+Subscribe to progress (SSE):
+- GET /jobs/events/{job_id}
 
 ## RLS tenant context
 

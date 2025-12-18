@@ -12,6 +12,7 @@ from src.api.routes import auth as auth_routes
 from src.api.routes import tenants as tenants_routes
 from src.api.routes import users as users_routes
 from src.api.routes import devices as devices_routes
+from src.api.routes import jobs as jobs_routes
 
 settings = get_settings()
 
@@ -20,6 +21,7 @@ openapi_tags = [
     {"name": "tenants", "description": "Tenant management"},
     {"name": "users", "description": "User management"},
     {"name": "devices", "description": "Device registry"},
+    {"name": "jobs", "description": "Async job enqueue + SSE progress"},
 ]
 
 app = FastAPI(
@@ -60,7 +62,7 @@ def health():
     "/docs/websocket-usage",
     tags=["auth"],
     summary="WebSocket/SSE usage notes",
-    description="Notes about future real-time endpoints; this scaffold does not expose WebSockets yet.",
+    description="SSE is available for job events at /jobs/events/{job_id}. WebSocket endpoints may be added later.",
 )
 def websocket_usage_notes():
     """
@@ -68,7 +70,7 @@ def websocket_usage_notes():
     """
     return {
         "websocket": "Future endpoints will be documented with operation_id, tags, and usage.",
-        "sse": "SSE endpoints will be documented under /events/*",
+        "sse": "Available now at /jobs/events/{job_id}",
     }
 
 
@@ -77,6 +79,7 @@ app.include_router(auth_routes.router)
 app.include_router(tenants_routes.router)
 app.include_router(users_routes.router)
 app.include_router(devices_routes.router)
+app.include_router(jobs_routes.router)
 
 
 def generate_openapi_schema() -> Dict:

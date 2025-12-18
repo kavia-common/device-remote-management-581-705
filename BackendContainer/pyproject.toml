@@ -21,7 +21,9 @@ dependencies = [
   "alembic==1.14.0",
   "python-multipart==0.0.17",
   "orjson==3.10.12",
-  "psycopg[binary]==3.2.3"
+  "psycopg[binary]==3.2.3",
+  "celery==5.4.0",
+  "redis==5.1.1"
 ]
 
 [tool.black]

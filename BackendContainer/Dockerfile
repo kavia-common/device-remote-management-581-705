@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -e .
+# Optional: labels for worker command hint
+LABEL org.opencontainers.image.description="DRM Backend API + Celery tasks. Start worker with: celery -A src.celery_app.celery_app worker -l info -Q celery"
 
 # Copy source
 COPY src ./src
